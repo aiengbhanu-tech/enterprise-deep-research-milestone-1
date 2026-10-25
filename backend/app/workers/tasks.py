@@ -14,6 +14,24 @@ from app.workers.celery_app import celery_app
 
 settings = get_settings()
 
+_worker_event_loop: asyncio.AbstractEventLoop | None = None
+
+
+def get_worker_event_loop() -> asyncio.AbstractEventLoop:
+    """
+    Maintain one persistent asyncio event loop per Celery worker process.
+
+    SQLAlchemy asyncpg connections are bound to the event loop that created
+    them. Creating a new loop for every task causes 'Future attached to a
+    different loop' errors when the connection pool reuses a connection.
+    """
+    global _worker_event_loop
+
+    if _worker_event_loop is None or _worker_event_loop.is_closed():
+        _worker_event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_worker_event_loop)
+
+    return _worker_event_loop
 
 async def _load_run(run_id: str) -> ResearchRun:
     async with SessionLocal() as session:
@@ -101,4 +119,5 @@ async def _execute(run_id: str, resume: dict | None = None) -> None:
     retry_kwargs={"max_retries": 3},
 )
 def execute_research(run_id: str, resume: dict | None = None) -> None:
-    asyncio.run(_execute(run_id, resume))
+    loop = get_worker_event_loop()
+    loop.run_until_complete(_execute(run_id, resume))
