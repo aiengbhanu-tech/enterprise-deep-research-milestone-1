@@ -1,12 +1,22 @@
+import pytest
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
+
+import app.agents.graph as graph_module
+import app.services.synthesis as synthesis_module
 from app.agents.graph import (
     build_research_graph,
     route_after_additional_approval,
     route_after_citation_validation,
     route_after_critic,
 )
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command
 
+
+@pytest.fixture(autouse=True)
+def force_mock_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep graph unit tests deterministic regardless of local .env values."""
+    monkeypatch.setattr(graph_module.settings, "research_mode", "mock")
+    monkeypatch.setattr(synthesis_module.settings, "llm_provider", "mock")
 
 async def test_graph_interrupts_and_resumes() -> None:
     graph = build_research_graph(MemorySaver())

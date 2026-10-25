@@ -1,110 +1,57 @@
-async def _require_run(
-    run_id: UUID,
-    session: DbSession,
-) -> None:
-    if (
-        await session.get(
-            ResearchRun,
-            run_id,
-        )
-        is None
-    ):
-        raise HTTPException(
-            status_code=404,
-            detail="Research run not found",
-        )
+from app.services.critic import analyze_coverage, build_review, detect_contradictions
+
+PLAN = [{"id": "market", "question": "Measure market share"}]
 
 
-@router.get(
-    "/runs/{run_id}/coverage",
-    response_model=list[CoverageRead],
-)
-async def list_coverage(
-    run_id: UUID,
-    session: DbSession,
-) -> list[CoverageAssessment]:
-    await _require_run(run_id, session)
+def test_coverage_is_sufficient_with_diverse_high_quality_evidence() -> None:
+    evidence = [
+        {
+            "id": f"e-{index}",
+            "question": "Measure market share",
+            "content": "Supporting passage without a percentage.",
+            "source": f"https://source-{index % 2}.example/report",
+            "source_quality": 0.9,
+        }
+        for index in range(4)
+    ]
 
-    return list(
-        await session.scalars(
-            select(CoverageAssessment)
-            .where(
-                CoverageAssessment.run_id
-                == run_id
-            )
-            .order_by(
-                CoverageAssessment.iteration,
-                CoverageAssessment.question_id,
-            )
-        )
-    )
+    coverage = analyze_coverage(PLAN, evidence)
+
+    assert coverage[0]["status"] == "sufficient"
+    assert coverage[0]["independent_sources"] == 2
 
 
-@router.get(
-    "/runs/{run_id}/gaps",
-    response_model=list[ResearchGapRead],
-)
-async def list_gaps(
-    run_id: UUID,
-    session: DbSession,
-) -> list[ResearchGap]:
-    await _require_run(run_id, session)
+def test_missing_evidence_generates_followup_queries() -> None:
+    result = build_review(PLAN, [], iteration=1, max_iterations=3)
 
-    return list(
-        await session.scalars(
-            select(ResearchGap)
-            .where(
-                ResearchGap.run_id == run_id
-            )
-            .order_by(
-                ResearchGap.iteration,
-                ResearchGap.question_id,
-            )
-        )
-    )
+    assert result.critic["decision"] == "continue"
+    assert result.gaps[0]["question_id"] == "market"
+    assert len(result.critic["follow_up_queries"]) == 2
 
 
-@router.get(
-    "/runs/{run_id}/contradictions",
-    response_model=list[ContradictionRead],
-)
-async def list_contradictions(
-    run_id: UUID,
-    session: DbSession,
-) -> list[Contradiction]:
-    await _require_run(run_id, session)
+def test_iteration_limit_finishes_with_limitations() -> None:
+    result = build_review(PLAN, [], iteration=3, max_iterations=3)
 
-    return list(
-        await session.scalars(
-            select(Contradiction)
-            .where(
-                Contradiction.run_id == run_id
-            )
-            .order_by(
-                Contradiction.iteration
-            )
-        )
-    )
+    assert result.critic["decision"] == "complete_with_limitations"
 
 
-@router.get(
-    "/runs/{run_id}/critic",
-    response_model=list[CriticReviewRead],
-)
-async def list_critic_reviews(
-    run_id: UUID,
-    session: DbSession,
-) -> list[CriticReview]:
-    await _require_run(run_id, session)
+def test_conflicting_percentages_are_recorded() -> None:
+    evidence = [
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "question": "Measure market share",
+            "content": "The market share was 35% during the period.",
+            "source": "https://one.example/report",
+        },
+        {
+            "id": "22222222-2222-2222-2222-222222222222",
+            "question": "Measure market share",
+            "content": "The market share was 29% during the period.",
+            "source": "https://two.example/report",
+        },
+    ]
 
-    return list(
-        await session.scalars(
-            select(CriticReview)
-            .where(
-                CriticReview.run_id == run_id
-            )
-            .order_by(
-                CriticReview.iteration
-            )
-        )
-    )
+    contradictions = detect_contradictions(evidence)
+
+    assert len(contradictions) == 1
+    assert contradictions[0]["status"] == "unresolved"
