@@ -8,7 +8,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ResearchRunCreate(BaseModel):
     query: str = Field(min_length=10, max_length=5000)
-    budget_usd: Decimal | None = Field(default=None, gt=0, le=100)
+    budget_usd: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=100,
+    )
+    timeout_seconds: int | None = Field(
+        default=None,
+        ge=30,
+        le=86_400,
+    )
 
 
 class ResearchRunRead(BaseModel):
@@ -22,13 +31,28 @@ class ResearchRunRead(BaseModel):
     plan: dict | list | None
     result: dict | None
     error: str | None
+    deadline_at: datetime
+    cancellation_requested_at: datetime | None
+    cancellation_reason: str | None
+    finished_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
 
 class ApprovalDecision(BaseModel):
     decision: Literal["approved", "rejected"]
-    note: str | None = Field(default=None, max_length=2000)
+    note: str | None = Field(
+        default=None,
+        max_length=2000,
+    )
+
+
+class CancellationRequest(BaseModel):
+    reason: str = Field(
+        default="Cancelled by user",
+        min_length=1,
+        max_length=2000,
+    )
 
 
 class ApprovalRead(BaseModel):
@@ -73,11 +97,10 @@ class UsageSummary(BaseModel):
     input_tokens: int
     output_tokens: int
     estimated_cost_usd: Decimal
-    
+
+
 class CoverageRead(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True
-    )
+    model_config = ConfigDict(from_attributes=True)
 
     iteration: int
     question_id: str
@@ -91,9 +114,7 @@ class CoverageRead(BaseModel):
 
 
 class ResearchGapRead(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True
-    )
+    model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     iteration: int
@@ -104,9 +125,7 @@ class ResearchGapRead(BaseModel):
 
 
 class ContradictionRead(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True
-    )
+    model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     iteration: int
@@ -118,9 +137,7 @@ class ContradictionRead(BaseModel):
 
 
 class CriticReviewRead(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True
-    )
+    model_config = ConfigDict(from_attributes=True)
 
     iteration: int
     decision: str

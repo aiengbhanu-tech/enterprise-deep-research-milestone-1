@@ -19,6 +19,7 @@ class RunStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
 
 
 class ApprovalStatus(StrEnum):
@@ -30,16 +31,64 @@ class ApprovalStatus(StrEnum):
 class ResearchRun(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "research_runs"
 
-    thread_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    query: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(32), default=RunStatus.QUEUED, index=True)
-    budget_usd: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
-    plan: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    approvals: Mapped[list["ApprovalRequest"]] = relationship(
-    back_populates="run",
-    cascade="all, delete-orphan",
+    thread_id: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
+        nullable=False,
+    )
+    query: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        default=RunStatus.QUEUED,
+        index=True,
+    )
+    budget_usd: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4),
+        nullable=False,
+    )
+    plan: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    result: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    deadline_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        index=True,
+    )
+    cancellation_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    cancellation_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    celery_task_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    deadline_task_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    approvals: Mapped[list[ApprovalRequest]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
     )
 
 
@@ -47,20 +96,35 @@ class ApprovalRequest(UUIDMixin, Base):
     __tablename__ = "approval_requests"
 
     run_id: Mapped[UUID] = mapped_column(
-        ForeignKey("research_runs.id", ondelete="CASCADE"), index=True
+        ForeignKey(
+            "research_runs.id",
+            ondelete="CASCADE",
+        ),
+        index=True,
     )
-    status: Mapped[str] = mapped_column(String(32), default=ApprovalStatus.PENDING)
-    reason: Mapped[str] = mapped_column(Text, nullable=False)
-    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(32),
+        default=ApprovalStatus.PENDING,
+    )
+    reason: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+    decision_note: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
     )
+
     decided_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
+
     run: Mapped[ResearchRun] = relationship(
-    back_populates="approvals",
+        back_populates="approvals",
     )
